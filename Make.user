@@ -1,0 +1,23 @@
+# Make.user
+# set BLAS_LDFLAGS
+# in environment, or in here.
+
+# some BLAS options
+
+# OSX - Accelerate framework
+ACCEL_CFLAGS = -F Accelerate
+ACCEL_LDFLAGS = -framework Accelerate
+
+# The rest assume <cblas.h> will be found
+# in the system include path.
+
+# Intel MKL
+MKL_CFLAGS = -I/opt/intel/mkl/include
+MKL_LDFLAGS = -L/opt/intel/mkl/lib/intel64 -lmkl_core -lmkl_gf_lp64 -lmkl_gnu_thread -lpthread -lm
+
+# Others: OpenBLAS, ATLAS, GSL, ...
+
+# set choice here
+BLAS_CFLAGS ?= $(ACCEL_CFLAGS)
+BLAS_LDFLAGS ?= $(ACCEL_LDFLAGS)
+
