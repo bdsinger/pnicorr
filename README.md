@@ -30,10 +30,9 @@ Really the input can be any matrix of values, where each row is a time-series to
 
      ([] means optional.)
 
-Note that metadata is typically restricted to the first few columns as output by the afni/suma program `3dVol2Surf`.
+Note that only the metadata columns are ints and must have no decimal. Data must have a decimal, even if it is just `.0`. This is the quick and dirty way the file is parsed.
 
-Each row is a timeseries with its values separated by whitespace. `3dVol2Surf` interpolates voxel timeseries data onto each node (vertex) on a MGH FreeSurfer surface. But the rows could be any timeseries data; no spatial information is
-used (nor is it supplied by any recognized input arguments).
+Each row is a timeseries with its values separated by whitespace. The rows can be any timeseries data. No spatial information is used (nor available.)
 
 
 
