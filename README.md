@@ -30,7 +30,7 @@ Really the input can be any matrix of values, where each row is a time-series to
 
      ([] means optional.)
 
-Note that only the metadata columns are ints and must have no decimal. Data must have a decimal, even if it is just `.0`. This is the quick and dirty way the file is parsed.
+Note that only the metadata columns must be ints and must have no decimal. Data must have a decimal, even if it is just `.0`. This is the quick and dirty way the file is parsed. These columns are a relic of the `3dVol2Surf` program from [afni](http://afni.nimh.nih.gov). These columns, if present, are skipped.
 
 Each row is a timeseries with its values separated by whitespace. The rows can be any timeseries data. No spatial information is used (nor available.)
 
