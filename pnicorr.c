@@ -44,15 +44,12 @@ Ben Singer <bdsinger@princeton.edu> April 2013
 #include <cblas.h>
 #endif
 
-#include "pnicorr_io.h"
-#include "pnicorr_reporttime.h"
-#include "pnicorr_fmemopen.h"
-#include "pnicorr_debugbreak.h"
 #include "pnicorr.h"
 
-static const char **flag_text = NULL;
-static const char **flag_description = NULL;
-static const int *runtime_flags = NULL;
+// ******* Memory limits
+#define MAX_FILENAME 256
+#define BYTES_PER_GB (1000000000LL)
+#define BYTES_PER_MB (1000000LL)
 
 // ******* Helper functions
 
@@ -68,90 +65,42 @@ static void normalize_fvec(float *X, const int N) {
   cblas_sscal(N, alpha, X, incX);
 }
 
-static char get_trailing_arg_char(const char *argv[],
-                                  const int *flag_argc_index,
-                                  const pnicorr_rflags_t flag) {
-  char retfail = (char)-1;
-
-  if (flag_argc_index[flag] == 0)
-    return retfail;
-
-  const char *arg = argv[flag_argc_index[flag]];
-  size_t prelen = strlen(flag_text[flag]);
-
-  if (strlen(arg) >= prelen + 1) {
-    return arg[prelen];
-  } else {
-    return retfail;
-  }
-}
-
 // ****************** MAIN ***************
 int main(const int argc, const char *argv[]) {
-  int compression_level = 0;
+  int normalize = 1;
+  pnicorr_iotype_t iotype = pnicorr_iotype_1Dgz;
   long long maxmem = 4000;
+  int pre_args = 2;
 
-  flag_text = pnicorr_flagtext();
-  flag_description = pnicorr_flagdescription();
-  runtime_flags = pnicorr_runtimeflags();
-
-  if (argc < 2) {
+  if (argc < pre_args) {
     char *basec = strdup(argv[0]);
     char *bname = basename(basec);
-    fprintf(stderr, "\nusage: %s file.1D[.gz] [options]\n", bname);
-    for (pnicorr_rflags_t i = 0; i < pnicorr_rflags_numflags; ++i) {
-      fprintf(stderr, " %s:\t%s\n\n", flag_text[i], flag_description[i]);
-    }
+    fprintf(stderr,
+            "\nusage: %s file.1D[.gz] -[no]norm -mem=MB -iotype=1D|1Dgz|mat\n",
+            bname);
     exit(EXIT_FAILURE);
   }
 
-  // ****** parse args ********
   const char *filename = argv[1];
-  int user_flags = 0;
-  int flag_argc_index[pnicorr_rflags_numflags] = {0};
-  if (argc > 2) {
-    for (int i = 2; i < argc; ++i) {
-      for (pnicorr_rflags_t j = 0; j < pnicorr_rflags_numflags; ++j) {
-        if (strstr(argv[i], flag_text[j]) != NULL) {
-          user_flags |= runtime_flags[j];
-          flag_argc_index[j] = i;
-          LOG("%s\n", flag_text[j]);
-        }
-      }
-    }
-  }
+  FILE *fp = fopen(filename, "r");
+  ERRIF(NULL == fp, "fopen");
+  fclose(fp);
 
-  /*
-    user can set the gzip compression level for the output by appending a "1"
-    through "9" to the "-gzout" flag as in "-gzout1" through "-gzout9". This
-    number is used in the "mode" argument to gzopen, passed to the save_result
-    fn
-   */
-  char trailing_char = (int)get_trailing_arg_char(
-      argv, flag_argc_index, pnicorr_rflags_compressoutput);
-  compression_level =
-      flag_argc_index[pnicorr_rflags_compressoutput] ? DEFAULT_GZIP_LEVEL : 0;
-  if ((int)trailing_char > 0) {
-    compression_level = (int)trailing_char;
-    LOG("compression level set to %d\n", compression_level);
-  }
+  struct opts2struct_t *ops2s = opts2struct_create();
+  opts2struct_parseopts(ops2s, argc - pre_args, &argv[pre_args]);
 
-  // -mem variants; determine how much to compute at once
-  trailing_char =
-      get_trailing_arg_char(argv, flag_argc_index, pnicorr_rflags_memory);
-  if ((int)trailing_char >= 0) {
-    const char *mm = argv[flag_argc_index[pnicorr_rflags_memory]];
-    maxmem = strtol(mm + strlen(flag_text[pnicorr_rflags_memory]), NULL, 10);
-    ERRIF(LONG_MAX == maxmem, "strtol");
-    LOG("max memory set to %lldM\n", maxmem);
-  }
+  if (ops2s->found[norm])
+    normalize = ops2s->i[norm];
+  if (ops2s->found[mem])
+    maxmem = ops2s->i[mem];
 
   int num_timeseries, trs;
+
   //  **********  get data from file ************
   float *data = pnicorr_load_1D(filename, &num_timeseries, &trs);
 
   //  **********  Normalize -- unless asked not to via "-nonorm" ************
-  if (0 == (user_flags & runtime_flags[pnicorr_rflags_nonorm])) {
+  if (normalize) {
     LOG("normalizing each row/timeseries independently ...\n");
     float *dptr = data;
     for (int i = 0; i < num_timeseries; ++i) {
@@ -183,9 +132,22 @@ int main(const int argc, const char *argv[]) {
   if (loc[1] == '/')
     loc = strchr(loc, '.'); // but if the form ./file.1D, want second one
   strncpy(outfile, filename, loc - filename);
-  const char *ext =
-      (user_flags & runtime_flags[pnicorr_rflags_savetext]) ? "1D" : "single";
-  const char *comp = (compression_level > 0) ? ".gz" : "";
+
+  const char *ext = "1D";
+  const char *comp = "gz";
+
+  if (ops2s->found[iotype]) {
+    if (!strncmp(ops2s->iotype, "1D", 2)) {
+      iotype = pnicorr_iotype_1D;
+    } else if (!strncmp(ops2s->iotype, "1Dgz", 4)) {
+      iotype = pnicorr_iotype_1Dgz;
+      comp = ".gz";
+    } else if (!strncmp(ops2s->iotype, "mat", 3)) {
+      iotype = pnicorr_iotype_mat;
+      ext = "mat";
+    }
+  }
+
   sprintf(outfile, "%s_%dx%d_correlations.%s%s", outfile, num_timeseries,
           num_timeseries, ext, comp);
   setbuf(stdout, NULL); // get time info immediately
@@ -213,9 +175,8 @@ int main(const int argc, const char *argv[]) {
         outfile);
     TIC;
 
-    pnicorr_savematrix(result, num_timeseries, num_timeseries, "w",
-                       user_flags & runtime_flags[pnicorr_rflags_savetext],
-                       compression_level, outfile);
+    pnicorr_savematrix(result, num_timeseries, num_timeseries, "w", iotype,
+                       outfile);
 
     TOC("saving");
 
@@ -293,9 +254,7 @@ int main(const int argc, const char *argv[]) {
       TIC;
 
       pnicorr_savematrix(result, num_timeseries_per_task, num_timeseries,
-                         first_task ? "w" : "a",
-                         user_flags & runtime_flags[pnicorr_rflags_savetext],
-                         compression_level, outfile);
+                         first_task ? "w" : "a", iotype, outfile);
 
       TOC("saving");
 
@@ -314,12 +273,6 @@ int main(const int argc, const char *argv[]) {
     free(data);
   if (result)
     free(result);
-  if (runtime_flags)
-    free((void *)runtime_flags);
-  if (flag_text)
-    free(flag_text);
-  if (flag_description)
-    free(flag_description);
 
   return EXIT_SUCCESS;
 }

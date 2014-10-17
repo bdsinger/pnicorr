@@ -6,12 +6,15 @@
 //  Copyright (c) 2014 Benjamin Singer. All rights reserved.
 //
 #define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
 #include <fcntl.h>
 #include <string.h>
 #include <zlib.h>
+#include <float.h>
 #include <assert.h>
-#include "pnicorr.h"
-#include "pnicorr_fmemopen.h"
+
+#include "pnicorr_debug.h"
 #include "pnicorr_io.h"
 
 // =============    helper functions =====================
@@ -122,60 +125,39 @@ static int get_vals_from_line(const char *line, const int start_tr,
 }
 
 // ****************** save_result ***************
-static void save_compressed_result(const float *result, const int M,
-                                   const int N, const char *mode,
-                                   const int save_text,
-                                   const int compression_level, char *outfile) {
+static void write_1Dgz(const float *result, const int M, const int N,
+                       const char *mode, char *outfile) {
   char compress_mode[4];
-  sprintf(compress_mode, "%s%d", mode, compression_level);
+  const int default_compression_level = 4;
 
-  if (save_text) {
-    gzFile *fp = gzopen(outfile, compress_mode);
-    ERRIF(NULL == fp, "gzopen");
-    int i, j, start;
-    for (j = 0; j < M; ++j) {
-      start = j * N;
-      for (i = 0; i < N; ++i) {
-        gzprintf(fp, "%4.4f ", result[start + i]);
-      }
-      gzprintf(fp, "\n");
+  sprintf(compress_mode, "%s%d", mode, default_compression_level);
+
+  gzFile *fp = gzopen(outfile, compress_mode);
+  ERRIF(NULL == fp, "gzopen");
+  int i, j, start;
+  for (j = 0; j < M; ++j) {
+    start = j * N;
+    for (i = 0; i < N; ++i) {
+      gzprintf(fp, "%4.4f ", result[start + i]);
     }
-    gzclose(fp);
-  } else {
-    gzFile *fp = gzopen(outfile, compress_mode);
-    ERRIF(NULL == fp, "gzopen");
-    gzwrite(fp, result, sizeof(float) * M * N);
-    gzclose(fp);
+    gzprintf(fp, "\n");
   }
+  gzclose(fp);
 }
 
-// ****************** save_result ***************
-void pnicorr_savematrix(const float *result, const int M, const int N,
-                        const char *mode, const int save_text,
-                        const int compression_level, char *outfile) {
-  if (compression_level > 0) {
-    save_compressed_result(result, M, N, mode, save_text, compression_level,
-                           outfile);
-  }
-
-  if (save_text) {
-    FILE *fp = fopen(outfile, mode);
-    ERRIF(NULL == fp, "fopen");
-    int i, j, start;
-    for (j = 0; j < M; ++j) {
-      start = j * N;
-      for (i = 0; i < N; ++i) {
-        fprintf(fp, "%4.4f ", result[start + i]);
-      }
-      fprintf(fp, "\n");
+static void write_1D(const float *result, const int M, const int N,
+                     const char *mode, char *outfile) {
+  FILE *fp = fopen(outfile, mode);
+  ERRIF(NULL == fp, "fopen");
+  int i, j, start;
+  for (j = 0; j < M; ++j) {
+    start = j * N;
+    for (i = 0; i < N; ++i) {
+      fprintf(fp, "%4.4f ", result[start + i]);
     }
-    fclose(fp);
-  } else {
-    FILE *fp = fopen(outfile, mode);
-    ERRIF(NULL == fp, "fopen");
-    fwrite(result, sizeof(float), M * N, fp);
-    fclose(fp);
+    fprintf(fp, "\n");
   }
+  fclose(fp);
 }
 
 float *pnicorr_load_1D(const char *filename, int *nts, int *ntrs) {
@@ -292,3 +274,377 @@ float *pnicorr_load_1D(const char *filename, int *nts, int *ntrs) {
   *ntrs = trs;
   return data;
 }
+
+#pragma mark - writematmatrix section
+
+/*
+ *  writematmatrix and supporting functions are adapted from "matfiles.c"
+ *  by Malcolm MacLean. The original can be found on Matlab Central here:
+
+ https://www.mathworks.com/matlabcentral/fileexchange/26731-portable-matfile-exporter--in-c-
+
+*/
+
+#define miINT8 1
+#define miUINT16 4
+#define miINT32 5
+#define miUINT32 6
+#define miDOUBLE 9
+#define miMATRIX 14
+
+#define mxCELL_CLASS 1
+#define mxCHAR_CLASS 4
+#define mxDOUBLE_CLASS 6
+
+/*
+ * write a double to a stream in ieee754 format regardless of host
+ *  encoding.
+ *  x - number to write
+ *  fp - the stream
+ *  bigendian - set to write big bytes first, elee write litle bytes
+ *              first
+ *  Returns: 0 or EOF on error
+ *  Notes: different NaN types and negative zero not preserved.
+ *         if the number is too big to represent it will become infinity
+ *         if it is too small to represent it will become zero.
+ */
+static inline int fwriteieee754(double x, FILE *fp, int bigendian) {
+  int shift;
+  unsigned long sign, exp, hibits, hilong, lowlong;
+  double fnorm, significand;
+  int expbits = 11;
+  int significandbits = 52;
+
+  /* zero (can't handle signed zero) */
+  if (x == 0) {
+    hilong = 0;
+    lowlong = 0;
+    goto writedata;
+  }
+  /* infinity */
+  if (x > DBL_MAX) {
+    hilong = 1024 + ((1 << (expbits - 1)) - 1);
+    hilong <<= (31 - expbits);
+    lowlong = 0;
+    goto writedata;
+  }
+  /* -infinity */
+  if (x < -DBL_MAX) {
+    hilong = 1024 + ((1 << (expbits - 1)) - 1);
+    hilong <<= (31 - expbits);
+    hilong |= (1 << 31);
+    lowlong = 0;
+    goto writedata;
+  }
+  /* NaN - dodgy because many compilers optimise out this test, but
+   *there is no portable isnan() */
+  if (x != x) {
+    hilong = 1024 + ((1 << (expbits - 1)) - 1);
+    hilong <<= (31 - expbits);
+    lowlong = 1234;
+    goto writedata;
+  }
+
+  /* get the sign */
+  if (x < 0) {
+    sign = 1;
+    fnorm = -x;
+  } else {
+    sign = 0;
+    fnorm = x;
+  }
+
+  /* get the normalized form of f and track the exponent */
+  shift = 0;
+  while (fnorm >= 2.0) {
+    fnorm /= 2.0;
+    shift++;
+  }
+  while (fnorm < 1.0) {
+    fnorm *= 2.0;
+    shift--;
+  }
+
+  /* check for denormalized numbers */
+  if (shift < -1022) {
+    while (shift < -1022) {
+      fnorm /= 2.0;
+      shift++;
+    }
+    shift = -1023;
+  }
+  /* out of range. Set to infinity */
+  else if (shift > 1023) {
+    hilong = 1024 + ((1 << (expbits - 1)) - 1);
+    hilong <<= (31 - expbits);
+    hilong |= (sign << 31);
+    lowlong = 0;
+    goto writedata;
+  } else
+    fnorm = fnorm - 1.0; /* take the significant bit off mantissa */
+
+  /* calculate the integer form of the significand */
+  /* hold it in a  double for now */
+
+  significand = fnorm * ((1LL << significandbits) + 0.5f);
+
+  /* get the biased exponent */
+  exp = shift + ((1 << (expbits - 1)) - 1); /* shift + bias */
+
+  /* put the data into two longs (for convenience) */
+  hibits = (long)(significand / 4294967296);
+  hilong = (sign << 31) | (exp << (31 - expbits)) | hibits;
+  lowlong = (unsigned long)(significand - hibits * 4294967296);
+
+writedata:
+  /* write the bytes out to the stream */
+  if (bigendian) {
+    fputc((hilong >> 24) & 0xFF, fp);
+    fputc((hilong >> 16) & 0xFF, fp);
+    fputc((hilong >> 8) & 0xFF, fp);
+    fputc(hilong & 0xFF, fp);
+
+    fputc((lowlong >> 24) & 0xFF, fp);
+    fputc((lowlong >> 16) & 0xFF, fp);
+    fputc((lowlong >> 8) & 0xFF, fp);
+    fputc(lowlong & 0xFF, fp);
+  } else {
+    fputc(lowlong & 0xFF, fp);
+    fputc((lowlong >> 8) & 0xFF, fp);
+    fputc((lowlong >> 16) & 0xFF, fp);
+    fputc((lowlong >> 24) & 0xFF, fp);
+
+    fputc(hilong & 0xFF, fp);
+    fputc((hilong >> 8) & 0xFF, fp);
+    fputc((hilong >> 16) & 0xFF, fp);
+    fputc((hilong >> 24) & 0xFF, fp);
+  }
+  return ferror(fp);
+}
+
+/*
+ * put a 32 bit little-endian integer to file
+ **/
+static int fput32le(FILE *fp, size_t x) {
+  int i;
+
+  for (i = 0; i < 4; i++) {
+    fputc(x & 0xFF, fp);
+    x >>= 8;
+  }
+  return 0;
+}
+
+/*
+ * Quick and easy function to write a double array as a MATLAB matrix file.
+ * Params: fname - name of file to write
+ *         name - MATLAB name of variable
+ *         data - the data (in C format)
+ *         m - number of rows
+ *         n - number of columns
+ *         transpose - flag for transposing data (i.e. data is in MATLAB format)
+ *  Returns: 0 on success, -1 on fail
+ */
+static int writematmatrix(const char *fname, const char *name,
+                          const float *data, const int m, const int n,
+                          const int transpose) {
+  FILE *fp;
+  int i, ii;
+  char buff[128];
+  size_t bufflen;
+  size_t totalsize;
+  int err;
+
+  assert(m > 0);
+  assert(n > 0);
+  assert((m * n) / n == m);
+  fp = fopen(fname, "wb");
+  if (!fp)
+    return -1;
+  sprintf(buff, "MATLAB matrix file of %s, generated by Malcolm McLean", name);
+  bufflen = strlen(buff);
+  for (i = 0; i < 123; i++)
+    fputc(i < bufflen ? buff[i] : ' ', fp);
+  fputc(0, fp);
+
+  fputc(0, fp);
+  fputc(1, fp);
+  fputc('I', fp);
+  fputc('M', fp);
+
+  /* the main tag */
+  totalsize = 8 + 8 + strlen(name) + (n * m * 8) + 8 * 4;
+  if (strlen(name) % 8)
+    totalsize += 8 - (strlen(name) % 8);
+  fput32le(fp, miMATRIX);
+  fput32le(fp, totalsize);
+
+  /* array descriptor field */
+  fput32le(fp, miUINT32);
+  fput32le(fp, 8);
+  fputc(mxDOUBLE_CLASS, fp);
+  fputc(4, fp); /* array flags */
+  fputc(0, fp);
+  fputc(0, fp);
+  fput32le(fp, 0);
+
+  /* array dimensions */
+  fput32le(fp, miINT32);
+  fput32le(fp, 2 * 4);
+  fput32le(fp, m);
+  fput32le(fp, n);
+
+  /* array name */
+  fput32le(fp, miINT8);
+  fput32le(fp, strlen(name));
+  for (i = 0; name[i]; i++)
+    fputc(name[i], fp);
+  while (i % 8) {
+    fputc(0, fp);
+    i++;
+  }
+
+  /* the actual data */
+  fput32le(fp, miDOUBLE);
+  fput32le(fp, m * n * 8);
+  if (transpose) {
+    for (i = 0; i < m; i++)
+      for (ii = 0; ii < n; ii++)
+        fwriteieee754(data[i * n + ii], fp, 0);
+  } else {
+    for (i = 0; i < n; i++)
+      for (ii = 0; ii < m; ii++)
+        fwriteieee754(data[ii * n + i], fp, 0);
+  }
+
+  if (ferror(fp)) {
+    fclose(fp);
+    return -1;
+  }
+
+  err = fclose(fp);
+  if (err)
+    return -1;
+
+  return 0;
+}
+
+// ****************** save_result ***************
+void pnicorr_savematrix(const float *result, const int M, const int N,
+                        const char *mode, const pnicorr_iotype_t iotype,
+                        char *outfile) {
+  switch (iotype) {
+  case pnicorr_iotype_1Dgz:
+    write_1Dgz(result, M, N, mode, outfile);
+    break;
+  case pnicorr_iotype_1D:
+    write_1D(result, M, N, mode, outfile);
+    break;
+  case pnicorr_iotype_mat:
+    //(char *fname, char *name, double *data, int m, int n, int transpose)
+    writematmatrix(outfile, "pnicorr", result, M, N, 0);
+    break;
+  default:
+    ERRIF(1, "unknown  iotype %d\n", iotype);
+    break;
+  }
+}
+
+#pragma mark - fmemopen stuff
+
+/*
+
+ ported from
+ https://github.com/ingenuitas/python-tesseract/blob/master/fmemopen.c
+
+ which is missing; now see
+ https://github.com/NimbusKit/memorymapping/blob/master/src/fmemopen.c
+
+ */
+#ifndef __linux__
+
+struct fmem {
+  size_t pos;
+  size_t size;
+  char *buffer;
+};
+typedef struct fmem fmem_t;
+
+static int readfn(void *handler, char *buf, int size) {
+  int count = 0;
+  fmem_t *mem = handler;
+  int available = (int)(mem->size - mem->pos);
+
+  if (size > available)
+    size = available;
+  for (count = 0; count < size; mem->pos++, count++)
+    buf[count] = mem->buffer[mem->pos];
+
+  return count;
+}
+
+static int writefn(void *handler, const char *buf, int size) {
+  int count = 0;
+  fmem_t *mem = handler;
+  size_t available = mem->size - mem->pos;
+
+  if (size > available)
+    size = (int)available;
+  for (count = 0; count < size; mem->pos++, count++)
+    mem->buffer[mem->pos] = buf[count];
+
+  return count; // ? count : size;
+}
+
+static fpos_t seekfn(void *handler, fpos_t offset, int whence) {
+  fpos_t pos;
+  fmem_t *mem = handler;
+
+  switch (whence) {
+  case SEEK_SET:
+    pos = offset;
+    break;
+  case SEEK_CUR:
+    pos = mem->pos + offset;
+    break;
+  case SEEK_END:
+    pos = mem->size + offset;
+    break;
+  default:
+    return -1;
+  }
+
+  if (pos < 0 || pos > mem->size)
+    return -1;
+
+  mem->pos = pos;
+  return pos;
+}
+
+static int closefn(void *handler) {
+  free(handler);
+  return 0;
+}
+
+/* simple, but portable version of fmemopen for OS X / BSD */
+FILE *pnicorr_fmemopen(void *buf, size_t size, const char *mode) {
+  fmem_t *mem = (fmem_t *)malloc(sizeof(fmem_t));
+
+  memset(mem, 0, sizeof(fmem_t));
+  mem->size = size, mem->buffer = buf;
+  return funopen(mem, readfn, writefn, seekfn, closefn);
+}
+
+/* taviso / rarvmtools */
+/*   strchrnul */
+/*  for non-linux platforms */
+char *pnicorr_strchrnul(const char *s, int c) {
+  char *ptr = strchr(s, c);
+
+  if (!ptr) {
+    ptr = strchr(s, '\0');
+  }
+
+  return ptr;
+}
+#endif // if not __linux__

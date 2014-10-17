@@ -1,0 +1,4 @@
+[submodule "opts2struct"]
+	path = opts2struct
+	url = https://github.com/bdsinger/opts2struct
+	branch = master
