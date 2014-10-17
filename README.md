@@ -10,15 +10,15 @@ High performance auto-correlation of fMRI data
 From the help:
 
     usage: pnicorr file.1D[.gz] [options]
-     -[no]norm:	do not normalize rows
+     -norm|-nonorm:         normalize rows (or don't)
 
-     -mem=MB:	memory (MB)
-		Smaller means more file activity; computing is done 
-		in stages. Default is the same as -mem=4000  (4G)
+     -mem=MB:               memory (MB)
+		            Smaller means more file activity; computing is done 
+		            in stages. Default is the same as -mem=4000  (4G)
 
-     -iotype=1D|1Dgz|mat:	1D: same as input (SUMA ascii)
-		    		1Dgz: same as input, gzipped
-				mat:  matlab .mat file
+     -iotype=1D|1Dgz|mat:   1D: same as input (SUMA ascii)
+		    	  1Dgz: same as input, gzipped
+			   mat:  matlab .mat file
 
 Really the input can be any matrix of values, where each row is a time-series to be correlated with all other rows. The format is:
 
