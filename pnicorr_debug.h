@@ -21,17 +21,28 @@
 // ******* Debugging
 #ifdef NDEBUG
 // release version; make debug mode commands no-ops
-#define LOG(...) (__ASSERT_VOID_CAST(0))
-#define LOGIF(x, ...) (__ASSERT_VOID_CAST(0))
-#define ERRIF(cond, ...) (__ASSERT_VOID_CAST(0))
-#define TIC (__ASSERT_VOID_CAST(0))
-#define TOC(desc) (__ASSERT_VOID_CAST(0))
+#define NOP (void)0
+#define LOG(...) NOP
+#define LOGIF(x, ...) NOP
+#define TIC NOP
+#define TOC(desc) NOP
 #else
 // for debugging
 #define LOG(...) printf(__VA_ARGS__)
 #define LOGIF(x, ...)                                                          \
   if (x)                                                                       \
   printf(__VA_ARGS__)
+  // timing
+  static struct timeval time1, time2;
+#define TIC gettimeofday(&time1, NULL)
+#define TOC(desc)                                                              \
+  do {                                                                         \
+    gettimeofday(&time2, NULL);                                                \
+    pnicorr_reporttime(time1, time2, desc);                                    \
+  } while (0)
+#endif
+
+// for feedback in release mode as well
 #define ERRIF(cond, ...)                                                       \
   do {                                                                         \
     if (cond) {                                                                \
@@ -40,18 +51,6 @@
       pnicorr_debugbreak(errmsg, __FILE__, __LINE__);                          \
     }                                                                          \
   } while (0)
-#endif
-
-// timing
-static struct timeval time1, time2;
-#define TIC gettimeofday(&time1, NULL)
-#define TOC(desc)                                                              \
-  do {                                                                         \
-    gettimeofday(&time2, NULL);                                                \
-    pnicorr_reporttime(time1, time2, desc);                                    \
-  } while (0)
-
-// for feedback in release mode as well
 #define ALOG(...) printf(__VA_ARGS__)
 #define ALOGIF(x, ...)                                                         \
   if (x)                                                                       \
