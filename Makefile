@@ -7,7 +7,7 @@ CFLAGS ?= -Wall -Wextra -O3 -std=c99 $(BLAS_CFLAGS)
 LDFLAGS ?= $(BLAS_LDFLAGS) -lz
 PROG ?= pni_corr
 
-SOURCES = pnicorr.c pnicorr_io.c pnicorr_reporttime.c pnicorr_fmemopen.c pnicorr_debugbreak.c opts2struct/opts2struct.c
+SOURCES = pnicorr.c pnicorr_io.c pnicorr_debug.c opts2struct/opts2struct.c
 OBJECTS = $(SOURCES:.c=.o)
 
 all: $(SOURCES) $(PROG)
