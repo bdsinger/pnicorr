@@ -134,7 +134,7 @@ int main(const int argc, const char *argv[]) {
   strncpy(outfile, filename, loc - filename);
 
   const char *ext = "1D";
-  const char *comp = "gz";
+  const char *comp = ".gz";
 
   if (ops2s->found[iotype]) {
     if (!strncmp(ops2s->iotype, "1D", 2)) {
