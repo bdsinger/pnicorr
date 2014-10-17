@@ -13,12 +13,12 @@ From the help:
      -norm|-nonorm:         normalize rows (or don't)
 
      -mem=MB:               memory (MB)
-		            Smaller means more file activity; computing is done 
-		            in stages. Default is the same as -mem=4000  (4G)
+                            Smaller means more file activity; computing is done
+                            in stages. Default is the same as -mem=4000  (4G)
 
      -iotype=1D|1Dgz|mat:   1D: same as input (SUMA ascii)
-		    	  1Dgz: same as input, gzipped
-			   mat:  matlab .mat file
+                          1Dgz: same as input, gzipped
+                           mat:  matlab .mat file
 
 Really the input can be any matrix of values, where each row is a time-series to be correlated with all other rows. The format is:
 
