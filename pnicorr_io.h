@@ -10,6 +10,7 @@
 #define __h__pnicorr_io__
 
 #define MAX_LINE 4194304L
+#define MAX_FILENAME 256
 
 typedef enum {
   pnicorr_iotype_1D,
@@ -19,20 +20,10 @@ typedef enum {
 } pnicorr_iotype_t;
 
 float *pnicorr_load_1D(const char *filename, int *nts, int *ntrs);
+const char *pnicorr_genoutfile(const char *filename, const int num_timeseries,
+                               const char *ext, const char *comp);
 void pnicorr_savematrix(const float *result, const int M, const int N,
                         const char *mode, const pnicorr_iotype_t iotype,
-                        char *outfile);
-
-#ifdef __linux__
-
-#define pnicorr_fmemopen fmemopen
-#define pnicorr_strchrnul strchrnul
-
-#else
-
-FILE *pnicorr_fmemopen(void *buf, size_t size, const char *mode);
-char *pnicorr_strchrnul(const char *s, int c);
-
-#endif // __linux__
+                        const char *outfile);
 
 #endif /* defined(__h__pnicorr_io__) */

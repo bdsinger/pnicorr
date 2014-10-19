@@ -47,44 +47,43 @@ Ben Singer <bdsinger@princeton.edu> April 2013
 #include "pnicorr.h"
 
 // ******* Memory limits
-#define MAX_FILENAME 256
 #define BYTES_PER_GB (1000000000LL)
 #define BYTES_PER_MB (1000000LL)
 
 // ******* Helper functions
 
 // ****************** normalize_fvec ***************
-static void normalize_fvec(float *X, const int N) {
+static void normalize_fvec(float *data, const int num_timeseries, const int N) {
   const int incX = 1;
-
-  float norm2 = cblas_snrm2(N, X, incX);
-  if (norm2 == 0.0 || norm2 == 1.0)
-    return;
-
-  const float alpha = 1.0 / norm2;
-  cblas_sscal(N, alpha, X, incX);
+  float *dptr = data;
+  for (int i = 0; i < num_timeseries; ++i) {
+    float norm2 = cblas_snrm2(N, dptr, incX);
+    const float alpha = 1.0 / norm2;
+    cblas_sscal(N, alpha, dptr, incX);
+    dptr += N;
+  }
 }
 
 // ****************** MAIN ***************
 int main(const int argc, const char *argv[]) {
+
+  // ***** parse input args ******
   int normalize = 1;
-  pnicorr_iotype_t iotype = pnicorr_iotype_1Dgz;
+  pnicorr_iotype_t outtype = pnicorr_iotype_1Dgz;
   long long maxmem = 4000;
   int pre_args = 2;
+  const char *ext = "1D.dset";
+  const char *comp = ".gz";
 
   if (argc < pre_args) {
     char *basec = strdup(argv[0]);
     char *bname = basename(basec);
-    fprintf(stderr,
-            "\nusage: %s file.1D[.gz] -[no]norm -mem=MB -iotype=1D|1Dgz|mat\n",
+    fprintf(stderr, "\nusage: %s file.1D.dset[.gz] -[no]norm -mem=MB "
+                    "-iotype=1D|1Dgz|mat\n",
             bname);
     exit(EXIT_FAILURE);
   }
-
   const char *filename = argv[1];
-  FILE *fp = fopen(filename, "r");
-  ERRIF(NULL == fp, "fopen");
-  fclose(fp);
 
   struct opts2struct_t *ops2s = opts2struct_create();
   opts2struct_parseopts(ops2s, argc - pre_args, &argv[pre_args]);
@@ -94,20 +93,35 @@ int main(const int argc, const char *argv[]) {
   if (ops2s->found[mem])
     maxmem = ops2s->i[mem];
 
-  int num_timeseries, trs;
+  if (ops2s->found[iotype]) {
+    if (!strncmp(ops2s->iotype, "1D", 2)) {
+      outtype = pnicorr_iotype_1D;
+      ext = "1D.dset";
+      comp = "";
+    } else if (!strncmp(ops2s->iotype, "1Dgz", 4)) {
+      outtype = pnicorr_iotype_1Dgz;
+      ext = "1D.dset";
+      comp = ".gz";
+    } else if (!strncmp(ops2s->iotype, "mat", 3)) {
+      outtype = pnicorr_iotype_mat;
+      ext = "mat";
+      comp = "";
+    }
+  }
 
   //  **********  get data from file ************
+  int num_timeseries, trs;
   float *data = pnicorr_load_1D(filename, &num_timeseries, &trs);
+
+  // get outfile name
+  const char *outfile = pnicorr_genoutfile(filename, num_timeseries, ext, comp);
 
   //  **********  Normalize -- unless asked not to via "-nonorm" ************
   if (normalize) {
     LOG("normalizing each row/timeseries independently ...\n");
-    float *dptr = data;
-    for (int i = 0; i < num_timeseries; ++i) {
-      // normalizes each row (timeseries) independently
-      normalize_fvec(dptr, trs);
-      dptr += trs;
-    }
+    TIC;
+    normalize_fvec(data, num_timeseries, trs);
+    TOC("normalize");
   }
 
   // ************  do the matrix multiplication ***************
@@ -120,37 +134,14 @@ int main(const int argc, const char *argv[]) {
       (long long int)((float)nbytes /
                           (float)((long long int)maxmem * BYTES_PER_MB) +
                       0.5);
-  // LOG("%lld bytes required,%lld MB max, %lld tasks required\n",nbytes,(long
-  // long int)maxmem*BYTES_PER_MB,ntasks);
+  LOG("%lld bytes required,%lld MB max, %lld tasks required\n", nbytes,
+      (long long int)maxmem * BYTES_PER_MB, ntasks);
   float *result = NULL;
   const float alpha = 1.0;
   const float beta = 0.0;
-  char outfile[MAX_FILENAME];
-  char *loc = pnicorr_strchrnul(filename, '.');
-  if (*loc != '\0')
-    loc = strchr(filename, '.'); // want first one, if it's there at all
-  if (loc[1] == '/')
-    loc = strchr(loc, '.'); // but if the form ./file.1D, want second one
-  strncpy(outfile, filename, loc - filename);
 
-  const char *ext = "1D";
-  const char *comp = ".gz";
-
-  if (ops2s->found[iotype]) {
-    if (!strncmp(ops2s->iotype, "1D", 2)) {
-      iotype = pnicorr_iotype_1D;
-    } else if (!strncmp(ops2s->iotype, "1Dgz", 4)) {
-      iotype = pnicorr_iotype_1Dgz;
-      comp = ".gz";
-    } else if (!strncmp(ops2s->iotype, "mat", 3)) {
-      iotype = pnicorr_iotype_mat;
-      ext = "mat";
-    }
-  }
-
-  sprintf(outfile, "%s_%dx%d_correlations.%s%s", outfile, num_timeseries,
-          num_timeseries, ext, comp);
-  setbuf(stdout, NULL); // get time info immediately
+  // get time info immediately
+  setbuf(stdout, NULL);
 
   if (ntasks <= 1) {
     // *********   all in one go; enough memory to do so *********
@@ -175,7 +166,7 @@ int main(const int argc, const char *argv[]) {
         outfile);
     TIC;
 
-    pnicorr_savematrix(result, num_timeseries, num_timeseries, "w", iotype,
+    pnicorr_savematrix(result, num_timeseries, num_timeseries, "w", outtype,
                        outfile);
 
     TOC("saving");
@@ -229,7 +220,6 @@ int main(const int argc, const char *argv[]) {
       memset(result, 0, bytes_per_task);
 
       TIC;
-
       LOG("calling cblas_sgemm using %d num_timeseries (rows) at a time\n",
           num_timeseries_per_task);
       /*
@@ -244,7 +234,6 @@ int main(const int argc, const char *argv[]) {
       cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
                   num_timeseries_per_task, num_timeseries, trs, alpha, offset,
                   trs, data, trs, beta, result, num_timeseries);
-
       TOC("calculating");
 
       // ******** save/append *********
@@ -252,10 +241,8 @@ int main(const int argc, const char *argv[]) {
           first_task ? "writing" : "appending", num_timeseries_per_task,
           num_timeseries, outfile);
       TIC;
-
       pnicorr_savematrix(result, num_timeseries_per_task, num_timeseries,
-                         first_task ? "w" : "a", iotype, outfile);
-
+                         first_task ? "w" : "a", outtype, outfile);
       TOC("saving");
 
       if (!last_task) {

@@ -29,28 +29,28 @@ void pnicorr_debugbreak(const char *s, const char *file, int line) {
 // ****************** timediff ***************
 static struct timeval timediff(const struct timeval start,
                                const struct timeval end) {
-    struct timeval temp;
-    if ((end.tv_usec - start.tv_usec) < 0) {
-        temp.tv_sec = end.tv_sec - start.tv_sec - 1;
-        temp.tv_usec = 1000000 + end.tv_usec - start.tv_usec;
-    } else {
-        temp.tv_sec = end.tv_sec - start.tv_sec;
-        temp.tv_usec = end.tv_usec - start.tv_usec;
-    }
-    return temp;
+  struct timeval temp;
+  if ((end.tv_usec - start.tv_usec) < 0) {
+    temp.tv_sec = end.tv_sec - start.tv_sec - 1;
+    temp.tv_usec = 1000000 + end.tv_usec - start.tv_usec;
+  } else {
+    temp.tv_sec = end.tv_sec - start.tv_sec;
+    temp.tv_usec = end.tv_usec - start.tv_usec;
+  }
+  return temp;
 }
 
 void pnicorr_reporttime(const struct timeval start, const struct timeval end,
                         const char *desc) {
-    const struct timeval diff = timediff(start, end);
-    
-    if (diff.tv_sec == 0) {
-        if (diff.tv_usec < 1000) {
-            LOG("Time for %s : %d usec\n", desc, diff.tv_usec);
-        } else {
-            LOG("Time for %s : %d msec\n", desc, diff.tv_usec / 1000);
-        }
+  const struct timeval diff = timediff(start, end);
+
+  if (diff.tv_sec == 0) {
+    if (diff.tv_usec < 1000) {
+      ALOG("Time for %s : %d usec\n", desc, diff.tv_usec);
     } else {
-        LOG("Time for %s : %ld sec\n", desc, diff.tv_sec);
+      ALOG("Time for %s : %d msec\n", desc, diff.tv_usec / 1000);
     }
+  } else {
+    ALOG("Time for %s : %ld sec\n", desc, diff.tv_sec);
+  }
 }
