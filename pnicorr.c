@@ -134,8 +134,9 @@ int main(const int argc, const char *argv[]) {
       (long long int)((float)nbytes /
                           (float)((long long int)maxmem * BYTES_PER_MB) +
                       0.5);
-  LOG("%lld bytes required,%lld MB max, %lld tasks required\n", nbytes,
-      (long long int)maxmem * BYTES_PER_MB, ntasks);
+  LOG("%lld task(s), since %d^2 floats is %.3f MB and the max MB per "
+      "task is %lld MB\n",
+      ntasks, num_timeseries, (float)nbytes / (float)BYTES_PER_MB, maxmem);
   float *result = NULL;
   const float alpha = 1.0;
   const float beta = 0.0;
@@ -155,30 +156,22 @@ int main(const int argc, const char *argv[]) {
     LOG("calling cblas_ssyrk to perform AA' ...\n");
 
     TIC;
-
     cblas_ssyrk(CblasRowMajor, CblasUpper, CblasNoTrans, num_timeseries, trs,
                 alpha, data, trs, beta, result, num_timeseries);
-
     TOC("calculation");
 
     // *** save ***
     LOG("saving %d x %d task result to %s\n", num_timeseries, num_timeseries,
         outfile);
     TIC;
-
     pnicorr_savematrix(result, num_timeseries, num_timeseries, "w", outtype,
                        outfile);
-
     TOC("saving");
-
     LOG("done\n");
   } else {
     // ****************  need to do it in blocks and append results *********
     // TODO: use MPI to distribute this, but first let's see how long it takes
     // serially w/OpenMP
-    LOG("must use %lld tasks, since %d^2 floats is %.3f MB and the max MB per "
-        "task is %lld MB\n",
-        ntasks, num_timeseries, (float)nbytes / (float)BYTES_PER_MB, maxmem);
     int nt = (int)ntasks;
     int num_timeseries_per_task = num_timeseries / nt;
     if (num_timeseries_per_task < 1) {

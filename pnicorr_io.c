@@ -634,8 +634,8 @@ const char *pnicorr_genoutfile(const char *filename, const int num_timeseries,
     loc = strchr(filename, '.'); // want first one, if it's there at all
   if (loc[1] == '/')
     loc = strchr(loc, '.'); // but if the form ./file.1D, want second one
-    char tmp[MAX_FILENAME];
-    strncpy(&tmp[0],filename,loc-filename);
+  char tmp[MAX_FILENAME];
+  strncpy(&tmp[0], filename, loc - filename);
   sprintf(outfile, "%s_%dx%d_correlations.%s%s", tmp, num_timeseries,
           num_timeseries, ext, comp);
   return outfile;
@@ -653,7 +653,7 @@ void pnicorr_savematrix(const float *result, const int M, const int N,
     write_1D(result, M, N, mode, outfile);
     break;
   case pnicorr_iotype_mat:
-    //(char *fname, char *name, double *data, int m, int n, int transpose)
+    ERRIF(mode[0] == 'a', "cannot append to mat files!\n");
     writematmatrix(outfile, "pnicorr", result, M, N, 0);
     break;
   default:
