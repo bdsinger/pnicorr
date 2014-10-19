@@ -22,13 +22,10 @@ implementation library of choice for your platform (Atlas, Gotoblas, MKL,
 vecLib, cuBLAS, OpenCL, etc). Tested with GotoBlas2 on 64-bit Linux and vecLib
 on 64-bit Mac OS X
 
-When GotoBlas2 is compiled with "USE_OPENMP 1" uncommented (in its
-Makefile.rules) it will use all available cores in parallel to do the work; no
-need to parallelize the for-loop in this code if you use that solution or one
-like it. What can    still improve  performance would be the use of multiple
-computers (say via MPI) -- for version 2.0
+Most CBLAS implementations are multicore, so the parallelism (within-machine)
+should come from that.
 
-Ben Singer <bdsinger@princeton.edu> April 2013
+Ben Singer <bdsinger@princeton.edu> April 2013, revised October 2014
 
 */
 
@@ -170,8 +167,6 @@ int main(const int argc, const char *argv[]) {
     LOG("done\n");
   } else {
     // ****************  need to do it in blocks and append results *********
-    // TODO: use MPI to distribute this, but first let's see how long it takes
-    // serially w/OpenMP
     int nt = (int)ntasks;
     int num_timeseries_per_task = num_timeseries / nt;
     if (num_timeseries_per_task < 1) {
@@ -215,15 +210,6 @@ int main(const int argc, const char *argv[]) {
       TIC;
       LOG("calling cblas_sgemm using %d num_timeseries (rows) at a time\n",
           num_timeseries_per_task);
-      /*
-       multiply this subset by full matrix. ignores the symmetry
-
-       TODO: don't ignore the symmetry. that is: multiply by part of matrix
-       with equal or higher numbered columns
-
-       the following tries that, but is not quite right:
-       cblas_sgemm(CblasRowMajor,CblasNoTrans,CblasTrans,num_timeseries_per_task,num_timeseries-num_timeseries_processed,trs,alpha,offset,trs,offset,trs,beta,result,num_timeseries);
-       */
       cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
                   num_timeseries_per_task, num_timeseries, trs, alpha, offset,
                   trs, data, trs, beta, result, num_timeseries);
