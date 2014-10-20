@@ -626,19 +626,16 @@ float *pnicorr_load_1D(const char *filename, int *nts, int *ntrs) {
   return data;
 }
 
-const char *pnicorr_genoutfile(const char *filename, const int num_timeseries,
-                               const char *ext, const char *comp) {
-  char *outfile = calloc(MAX_FILENAME, 1);
+void pnicorr_genoutfile(const char *filename, const int num_timeseries,
+                        const char *ext, const char *comp, char *outfile) {
   char *loc = strchrnul(filename, '.');
   if (*loc != '\0')
     loc = strchr(filename, '.'); // want first one, if it's there at all
   if (loc[1] == '/')
     loc = strchr(loc, '.'); // but if the form ./file.1D, want second one
-  char tmp[MAX_FILENAME];
-  strncpy(&tmp[0], filename, loc - filename);
-  sprintf(outfile, "%s_%dx%d_correlations.%s%s", tmp, num_timeseries,
+  strncpy(outfile, filename, loc - filename);
+  sprintf(outfile, "%s_%dx%d_correlations.%s%s", outfile, num_timeseries,
           num_timeseries, ext, comp);
-  return outfile;
 }
 
 // ****************** save_result ***************

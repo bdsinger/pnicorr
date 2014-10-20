@@ -18,8 +18,8 @@ void pnicorr_debugbreak(const char *s, const char *file, int line) {
    * On Mac OS X, Breakpad ignores signals. Only real Mach exceptions are
    * trapped.
    */
-  *((volatile int *)NULL) =
-      0;          /* To continue from here in GDB: "return" then "continue". */
+  /* To continue from here in GDB: "return" then "continue". */
+  //*((volatile int *)NULL) = 0;
   raise(SIGABRT); /* In case above statement gets nixed by the optimizer. */
 #else
   raise(SIGABRT); /* To continue from here in GDB: "signal 0". */
