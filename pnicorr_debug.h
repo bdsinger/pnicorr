@@ -32,8 +32,8 @@
 #define LOGIF(x, ...)                                                          \
   if (x)                                                                       \
   printf(__VA_ARGS__)
-  // timing
-  static struct timeval time1, time2;
+// timing
+static struct timeval time1, time2;
 #define TIC gettimeofday(&time1, NULL)
 #define TOC(desc)                                                              \
   do {                                                                         \

@@ -587,8 +587,6 @@ float *pnicorr_load_1D(const char *filename, int *nts, int *ntrs) {
   LOG("Reading %d floats...\n", n_elements);
   int i;
   int el;
-  const int update_count =
-      (num_timeseries > 100) ? (num_timeseries / 100) : num_timeseries;
   int count = 0;
   float *dptr = data;
   for (i = 0; i < num_timeseries; ++i) {
@@ -601,7 +599,7 @@ float *pnicorr_load_1D(const char *filename, int *nts, int *ntrs) {
     }
     ERRIF(el != trs, "Data for node %d incomplete\n", i);
     count += el;
-    ALOGIF(0 == (i % update_count), "%d%%\n",
+    ALOGIF(0 == (i % 100), "%d%%\n",
            (int)((float)i / (float)num_timeseries * 100.0f));
     fgets(line, MAX_LINE, sp);
   }
@@ -631,11 +629,10 @@ void pnicorr_genoutfile(const char *filename, const int num_timeseries,
   char *loc = strchrnul(filename, '.');
   if (*loc != '\0')
     loc = strchr(filename, '.'); // want first one, if it's there at all
-  if (loc[1] == '/')
-    loc = strchr(loc, '.'); // but if the form ./file.1D, want second one
   strncpy(outfile, filename, loc - filename);
   sprintf(outfile, "%s_%dx%d_correlations.%s%s", outfile, num_timeseries,
           num_timeseries, ext, comp);
+  LOG("outfile is %s\n", outfile);
 }
 
 // ****************** save_result ***************

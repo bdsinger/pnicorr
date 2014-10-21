@@ -12,8 +12,8 @@ ACCEL_LDFLAGS = -framework Accelerate
 # in the system include path.
 
 # Intel MKL
-MKL_CFLAGS = -I/opt/intel/mkl/include
-MKL_LDFLAGS = -L/opt/intel/mkl/lib/intel64 -lmkl_core -lmkl_gf_lp64 -lmkl_gnu_thread -lpthread -lm
+MKL_CFLAGS = -I/opt/intel/mkl/include -fopenmp -DMKL_PARALLEL
+MKL_LDFLAGS = -L/opt/intel/mkl/lib/intel64 -lmkl_core -lmkl_gf_lp64 -lmkl_gnu_thread -lgomp -lpthread -lm
 
 # Others: OpenBLAS, ATLAS, GSL, ...
 
