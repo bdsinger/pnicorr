@@ -133,7 +133,7 @@ void pnicorr_savematrix_for_task(const int i, const int *restrict rows_for_task,
                                  const float *restrict correlations);
 
 // ****************** MAIN ***************
-int main(int argc, char *argv[]) {
+int main(const int argc, const char *argv[]) {
   float *full_matrix = NULL;
   float *correlations = NULL;
   char outfile[MAX_FILENAME];
@@ -141,21 +141,17 @@ int main(int argc, char *argv[]) {
   int my_task_id = 0;
   long long ntasks = 1;
   int num_workers = 1;
+  pnicorr_iotype_t outtype = pnicorr_iotype_numiotypes;
 
   COR_MPI_INIT(my_task_id, num_workers);
-
-  // defaults
-  int normalize = 1;
-  pnicorr_iotype_t outtype = pnicorr_iotype_1Dgz;
-  long long maxmem = 4000;
 
   struct opts2struct_t *ops2s = opts2struct_create();
 
   if (0 == my_task_id) {
 
     // ***** parse input args ******
-    const char *ext = "1D.dset";
-    const char *comp = ".gz";
+    const char *ext;
+    const char *comp;
     const int pre_args = 2;
     char *basec = strdup(argv[0]);
     char *bname = basename(basec);
@@ -168,27 +164,27 @@ int main(int argc, char *argv[]) {
     }
     const char *filename = argv[1];
 
-    opts2struct_parseopts(ops2s, argc - pre_args, &argv[pre_args]);
+    opts2struct_parseopts(ops2s, argc, argv);
 
-    if (ops2s->found[norm])
-      normalize = ops2s->i[norm];
-    if (ops2s->found[mem])
-      maxmem = ops2s->i[mem];
+    int normalize = ops2s->i[norm];
+    long long maxmem = ops2s->i[mem];
 
-    if (ops2s->found[iotype]) {
-      if (!strncmp(ops2s->iotype, "1D", 2)) {
-        outtype = pnicorr_iotype_1D;
-        ext = "1D.dset";
-        comp = "";
-      } else if (!strncmp(ops2s->iotype, "1Dgz", 4)) {
-        outtype = pnicorr_iotype_1Dgz;
-        ext = "1D.dset";
-        comp = ".gz";
-      } else if (!strncmp(ops2s->iotype, "mat", 3)) {
-        outtype = pnicorr_iotype_mat;
-        ext = "mat";
-        comp = "";
-      }
+    if (!strncmp(ops2s->iotype, "1D", 2)) {
+      outtype = pnicorr_iotype_1D;
+      ext = "1D.dset";
+      comp = "";
+    } else if (!strncmp(ops2s->iotype, "1Dgz", 4)) {
+      outtype = pnicorr_iotype_1Dgz;
+      ext = "1D.dset";
+      comp = ".gz";
+    } else if (!strncmp(ops2s->iotype, "mat", 3)) {
+      outtype = pnicorr_iotype_mat;
+      ext = "mat";
+      comp = "";
+    } else {
+      ext = "";
+      comp = "";
+      ERRIF(1, "unrecognized iotype %s", ops2s->iotype);
     }
 
     //  **********  get full_matrix from file ************
